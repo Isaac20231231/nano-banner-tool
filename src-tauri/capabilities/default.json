@@ -1,0 +1,25 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capability for the main window",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "opener:default",
+    "dialog:default",
+    "fs:default",
+    {
+      "identifier": "fs:allow-read-file",
+      "allow": [{ "path": "**" }]
+    },
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "https://*.googleapis.com" },
+        { "url": "https://*.googleapis.com/**" },
+        { "url": "https://generativelanguage.googleapis.com/**" },
+        { "url": "https://fal.run/**" }
+      ]
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 {
   "name": "nano-banner-tool",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "AI Image Generation Tool powered by Nano Banana 2",
   "type": "module",
   "scripts": {

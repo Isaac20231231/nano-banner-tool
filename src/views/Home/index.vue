@@ -3,6 +3,51 @@
     <div class="home-container">
       <!-- 左侧控制面板 -->
       <div class="control-panel">
+        <!-- 预设提示词选择 -->
+        <div class="panel-section">
+          <h3 class="section-title">
+            <el-icon><Collection /></el-icon>
+            描述提示词 *
+          </h3>
+          <el-select
+            v-model="presetStore.selectedPresetId"
+            placeholder="无预设"
+            clearable
+            class="w-full preset-select"
+            @change="handlePresetChange"
+          >
+            <el-option
+              v-for="(preset, index) in presetStore.presets"
+              :key="preset.id"
+              :value="preset.id"
+              :label="`${index + 1}. ${preset.name}`"
+            />
+          </el-select>
+          <div class="preset-actions">
+            <el-button size="small" type="primary" @click="showAddPresetDialog">
+              <el-icon><Plus /></el-icon>
+              添加
+            </el-button>
+            <el-button
+              size="small"
+              :disabled="!presetStore.selectedPresetId"
+              @click="showEditPresetDialog"
+            >
+              <el-icon><EditPen /></el-icon>
+              编辑
+            </el-button>
+            <el-button
+              size="small"
+              type="danger"
+              :disabled="!presetStore.selectedPresetId"
+              @click="handleDeletePreset"
+            >
+              <el-icon><Delete /></el-icon>
+              删除
+            </el-button>
+          </div>
+        </div>
+
         <!-- 提示词输入 -->
         <div class="panel-section">
           <h3 class="section-title">
@@ -57,16 +102,16 @@
 
           <div class="param-grid">
             <div class="param-item">
-              <label>宽高比</label>
-              <el-select v-model="generationStore.aspectRatio" size="small">
-                <el-option value="1:1" label="1:1 (正方形)" />
-                <el-option value="16:9" label="16:9 (横屏)" />
-                <el-option value="9:16" label="9:16 (竖屏)" />
-                <el-option value="4:3" label="4:3" />
-                <el-option value="3:4" label="3:4" />
-                <el-option value="3:2" label="3:2" />
-                <el-option value="2:3" label="2:3" />
-                <el-option value="21:9" label="21:9 (超宽)" />
+              <label>画幅比例 (可选)</label>
+              <el-select v-model="generationStore.aspectRatio" size="small" placeholder="原画幅" clearable>
+                <el-option value="" label="原画幅" />
+                <el-option value="1:1" label="1:1 正方形" />
+                <el-option value="3:4" label="3:4 竖屏" />
+                <el-option value="4:3" label="4:3 横屏" />
+                <el-option value="9:16" label="9:16 手机竖屏" />
+                <el-option value="16:9" label="16:9 宽屏" />
+                <el-option value="2:3" label="2:3 海报竖版" />
+                <el-option value="3:2" label="3:2 海报横版" />
               </el-select>
             </div>
 
@@ -225,15 +270,50 @@
         </div>
       </div>
     </div>
+
+    <!-- 预设编辑对话框 -->
+    <el-dialog
+      v-model="presetDialogVisible"
+      :title="isEditingPreset ? '编辑预设' : '添加预设'"
+      width="500px"
+      :close-on-click-modal="false"
+    >
+      <el-form :model="presetForm" label-width="80px">
+        <el-form-item label="名称" required>
+          <el-input v-model="presetForm.name" placeholder="请输入预设名称" />
+        </el-form-item>
+        <el-form-item label="提示词" required>
+          <el-input
+            v-model="presetForm.prompt"
+            type="textarea"
+            :rows="4"
+            placeholder="请输入提示词内容"
+          />
+        </el-form-item>
+        <el-form-item label="负面提示词">
+          <el-input
+            v-model="presetForm.negativePrompt"
+            type="textarea"
+            :rows="2"
+            placeholder="可选，不希望出现的内容"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="presetDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="savePreset">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { useGenerationStore, useApiStore } from '@/stores';
+import { ref, reactive } from 'vue';
+import { useGenerationStore, useApiStore, usePromptPresetsStore } from '@/stores';
 import { createApiService } from '@/services/api';
 import type { GeneratedImage } from '@/types';
 import type { UploadFile } from 'element-plus';
-import { ElMessage } from 'element-plus';
+import { ElMessage, ElMessageBox } from 'element-plus';
 import {
   EditPen,
   Remove,
@@ -248,10 +328,111 @@ import {
   Delete,
   Loading,
   CircleCloseFilled,
+  Collection,
+  Plus,
 } from '@element-plus/icons-vue';
 
 const generationStore = useGenerationStore();
 const apiStore = useApiStore();
+const presetStore = usePromptPresetsStore();
+
+// 预设对话框相关
+const presetDialogVisible = ref(false);
+const isEditingPreset = ref(false);
+const editingPresetId = ref<string | null>(null);
+const presetForm = reactive({
+  name: '',
+  prompt: '',
+  negativePrompt: '',
+});
+
+// 选择预设时更新提示词
+function handlePresetChange(presetId: string | null) {
+  if (presetId) {
+    const preset = presetStore.presets.find(p => p.id === presetId);
+    if (preset) {
+      generationStore.prompt = preset.prompt;
+      if (preset.negativePrompt) {
+        generationStore.negativePrompt = preset.negativePrompt;
+      }
+    }
+  }
+}
+
+// 显示添加预设对话框
+function showAddPresetDialog() {
+  isEditingPreset.value = false;
+  editingPresetId.value = null;
+  presetForm.name = '';
+  presetForm.prompt = generationStore.prompt || '';
+  presetForm.negativePrompt = generationStore.negativePrompt || '';
+  presetDialogVisible.value = true;
+}
+
+// 显示编辑预设对话框
+function showEditPresetDialog() {
+  const preset = presetStore.selectedPreset;
+  if (!preset) return;
+
+  isEditingPreset.value = true;
+  editingPresetId.value = preset.id;
+  presetForm.name = preset.name;
+  presetForm.prompt = preset.prompt;
+  presetForm.negativePrompt = preset.negativePrompt || '';
+  presetDialogVisible.value = true;
+}
+
+// 保存预设
+function savePreset() {
+  if (!presetForm.name.trim()) {
+    ElMessage.warning('请输入预设名称');
+    return;
+  }
+  if (!presetForm.prompt.trim()) {
+    ElMessage.warning('请输入提示词内容');
+    return;
+  }
+
+  if (isEditingPreset.value && editingPresetId.value) {
+    presetStore.updatePreset(editingPresetId.value, {
+      name: presetForm.name.trim(),
+      prompt: presetForm.prompt.trim(),
+      negativePrompt: presetForm.negativePrompt.trim() || undefined,
+    });
+    ElMessage.success('预设已更新');
+  } else {
+    const newPreset = presetStore.addPreset(
+      presetForm.name.trim(),
+      presetForm.prompt.trim(),
+      presetForm.negativePrompt.trim() || undefined
+    );
+    presetStore.selectPreset(newPreset.id);
+    ElMessage.success('预设已添加');
+  }
+  presetDialogVisible.value = false;
+}
+
+// 删除预设
+async function handleDeletePreset() {
+  const preset = presetStore.selectedPreset;
+  if (!preset) return;
+
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除预设「${preset.name}」吗？`,
+      '删除确认',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    );
+    presetStore.deletePreset(preset.id);
+    ElMessage.success('预设已删除');
+  } catch {
+    // 用户取消
+  }
+}
 
 async function handleGenerate() {
   if (!generationStore.canGenerate) return;
@@ -363,6 +544,15 @@ function downloadAll() {
       color: var(--text-secondary);
       font-size: 12px;
     }
+  }
+
+  .preset-select {
+    margin-bottom: 12px;
+  }
+
+  .preset-actions {
+    display: flex;
+    gap: 8px;
   }
 }
 

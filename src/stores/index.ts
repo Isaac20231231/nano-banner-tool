@@ -6,3 +6,4 @@ export * from './app';
 export * from './generation';
 export * from './api';
 export * from './gallery';
+export * from './prompt-presets';
